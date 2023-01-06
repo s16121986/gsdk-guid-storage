@@ -1,2 +1,30 @@
 {
+  "name": "gsdk/guid-storage",
+  "type": "library",
+  "description": "Files storage",
+  "version": "1.0.0",
+  "keywords": [
+	"gsdk",
+	"files"
+  ],
+  "license": "MIT",
+  "authors": [
+	{
+	  "name": "Sergey Guryanov",
+	  "email": "s16121986@yandex.ru"
+	}
+  ],
+  "require": {
+	"php": ">=8.0.2"
+  },
+  "require-dev": {
+  },
+  "conflict": {
+  },
+  "autoload": {
+	"psr-4": {
+	  "Gsdk\\GuidStorage\\": ""
+	}
+  },
+  "minimum-stability": "dev"
 }
