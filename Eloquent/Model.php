@@ -2,12 +2,12 @@
 
 namespace Gsdk\GuidStorage\Eloquent;
 
-use Gsdk\GuidStorage\File;
 use Illuminate\Database\Eloquent\Model as BaseModel;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
-class Model extends BaseModel {
+class Model extends BaseModel
+{
 
 	const CREATED_AT = 'created';
 	const UPDATED_AT = 'updated';
@@ -28,17 +28,25 @@ class Model extends BaseModel {
 		'index'
 	];
 
-	public static function scopeWhereEntity($query, $entity) {
+	public static function scopeWhereEntity($query, $entity)
+	{
 		$query
 			->where('entity_id', $entity->id)
 			->where('entity_type', get_class($entity));
 	}
 
-	public static function scopeWhereType($query, $fileObject) {
+	public static function scopeWhereType($query, $fileObject)
+	{
 		$query->where('type', is_string($fileObject) ? $fileObject : get_class($fileObject));
 	}
 
-	public static function scopeEntityColumn(Builder $builder, string $columnName) {
+	public function isEntity($entity): bool
+	{
+		return $entity->id === $this->entity_id && get_class($entity) === $this->entity_type;
+	}
+
+	public static function scopeEntityColumn(Builder $builder, string $columnName)
+	{
 		$fileClass = static::class;
 		$entity = $builder->getModel();
 		/*$query = self::query()
@@ -47,15 +55,15 @@ class Model extends BaseModel {
 			->where('s_files.type', $fileClass);
 
 		*/
-		$builder->addSelect(DB::raw('(SELECT guid FROM s_files'
-			. ' WHERE entity_id=`' . $entity->getTable() . '`.id'
-			. ' AND entity_type="' . addslashes(get_class($entity)) . '"'
-			. ' AND type="' . addslashes($fileClass) . '"'
-			. ' LIMIT 1) as `' . $columnName . '`'));
-	}
-
-	public function file(): ?File {
-		return File::fromModel($this);
+		$builder->addSelect(
+			DB::raw(
+				'(SELECT guid FROM s_files'
+				. ' WHERE entity_id=`' . $entity->getTable() . '`.id'
+				. ' AND entity_type="' . addslashes(get_class($entity)) . '"'
+				. ' AND type="' . addslashes($fileClass) . '"'
+				. ' LIMIT 1) as `' . $columnName . '`'
+			)
+		);
 	}
 
 }

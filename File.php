@@ -2,188 +2,159 @@
 
 namespace Gsdk\GuidStorage;
 
-use Gsdk\GuidStorage\Facade\GuidStorageFacade;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\UploadedFile;
 
-class File {
+class File extends Eloquent\Model
+{
 
-	private $entity;
+	protected $fullname;
+	protected $entity;
 
-	private $model;
-
-	protected function __construct(
-		private readonly int      $id,
-		protected readonly string $guid,
-		protected readonly int    $entityId,
-		protected readonly string $entityType,
-		protected ?string         $name = null,
-	) {
-
+	public static function storage()
+	{
+		return Filesystem::storage();
 	}
 
-	public static function fromModel(Eloquent\Model $model): ?static {
+	protected static function boot()
+	{
+		parent::boot();
+
+		static::creating(function ($file) {
+			$file->type = static::class;
+			$file->guid = Filesystem::generateGuid();
+		});
+
+		static::retrieved(function ($file) {
+			$file->fullname = Filesystem::getDestination($file->guid);
+		});
+
+		static::deleting(function ($file) {
+			if (!$file->unlink())
+				return false;
+
+			$file->fullname = null;
+
+			return true;
+		});
+
+		static::addGlobalScope('main', function (Builder $builder) {
+			if (__CLASS__ !== static::class)
+				$builder->whereType(static::class);
+		});
+	}
+
+	public static function createFromEntity($entity, array $data = []): ?static
+	{
+		if (!$entity->id)
+			throw new Exception('Entity empty');
+
+		$data['entity_id'] = $entity->id;
+		$data['entity_type'] = get_class($entity);
+
+		$file = static::create($data);
+		$file->fullname = Filesystem::getDestination($file->guid);
+
+		return $file;
+	}
+
+	public static function findById($id)
+	{
+		return static::findByQuery(Eloquent\Model::where('id', $id));
+	}
+
+	public static function findByGuid($guid)
+	{
+		return static::findByQuery(Eloquent\Model::where('guid', $guid));
+	}
+
+	public static function findByEntity($entity)
+	{
+		return static::findByQuery(Eloquent\Model::whereEntity($entity));
+	}
+
+	private static function findByQuery($query)
+	{
+		if (static::class !== __CLASS__)
+			$query->where('type', static::class);
+
+		$model = $query->first();
 		if (!$model)
 			return null;
 
-		if ($model->type !== static::class)
-			throw new \Exception('Model file type invalid, [' . static::class . '] expected');
-
-		$file = new $model->type(
-			$model->id,
-			$model->guid,
-			$model->entity_id,
-			$model->entity_type,
-			$model->name,
-		);
-		$file->model = $model;
+		$file = new $model->type();
+		$file->forceFill($model->getAttributes());
+		$file->fullname = Filesystem::getDestination($model->guid);
+		$file->exists = true;
 
 		return $file;
 	}
 
-	public static function query() {
-		return Eloquent\Model::whereType(static::class);
+	public function __get($name)
+	{
+		switch ($name) {
+			case 'fullname':
+				return $this->fullname;
+			case 'name':
+				$name = parent::__get($name);
+				if ($name)
+					return $name;
+				else if ($this->mime_type)
+					return $this->guid . '.' . Filesystem::mimeToExtension($this->mime_type);
+				else
+					return $this->guid;
+		}
+
+		return parent::__get($name);
 	}
 
-	public static function createFromEntity($entity, string $name = null): ?static {
-		if (!$entity->id)
-			throw new \Exception('Entity empty');
-
-		$model = Eloquent\Model::create([
-			'guid' => static::generateGuid(),
-			'entity_id' => $entity->id,
-			'entity_type' => $entity::class,
-			'type' => static::class,
-			'name' => $name,
-		]);
-
-		$file = static::fromModel($model);
-
-		$file->updateModel();
-
-		return $file;
+	public function lastModified(): string
+	{
+		return $this->mtime;
 	}
 
-	public static function findById($id): ?static {
-		return static::fromModel(Eloquent\Model::where('id', $id)->first());
+	public function upload(UploadedFile $uploadFile)
+	{
+		Filesystem::saveFileFromUpload($this, $uploadFile);
 	}
 
-	public static function findByGuid($guid): ?static {
-		return static::fromModel(Eloquent\Model::where('guid', $guid)->first());
+	public function exists(): bool
+	{
+		return $this->fullname && self::storage()->exists($this->fullname);
 	}
 
-	public static function findByEntity($entity): ?static {
-		$query = Eloquent\Model::whereEntity($entity)
-			->whereType(static::class);
-
-		return static::fromModel($query->first());
+	public function content()
+	{
+		return $this->exists() ? self::storage()->get($this->fullname) : null;
 	}
 
-	public function __get($name) {
-		if (in_array($name, []))
-			return $this->$name;
-
-		return null;
+	public function unlink()
+	{
+		return $this->exists() && self::storage()->delete($this->fullname);
 	}
 
-	public function path(): string {
-		return GuidStorageFacade::path($this->guid);
+	public function download($name = null, array $headers = [])
+	{
+		$headers = [
+			'Content-Type: ' . $this->mime_type,
+		];
+
+		return self::storage()->download($this->fullname, $name ?? $this->name, $headers);
 	}
 
-	public function type(): string {
-		return static::class;
+	public function url()
+	{
+		return self::storage()->url($this->fullname);
 	}
 
-	public function exists(): bool {
-		return file_exists($this->path());
+	public function entity()
+	{
+		return $this->entity ?: $this->entity = call_user_func([$this->entity_type, 'find'], $this->entity_id);
 	}
 
-	public function hash($algorithm = 'md5') {
-		return hash_file($algorithm, $this->path());
-	}
-
-	public function name(): string {
-		return $this->name ?? (string)pathinfo($this->path(), PATHINFO_FILENAME);
-		//$this->guid . '.' . Util\Mime::mimeToExtension($this->mime_type)
-	}
-
-	public function basename(): string {
-		return pathinfo($this->path(), PATHINFO_BASENAME);
-	}
-
-	public function dirname(): string {
-		return pathinfo($this->path(), PATHINFO_DIRNAME);
-	}
-
-	public function mimeType(): string {
-		return finfo_file(finfo_open(FILEINFO_MIME_TYPE), $this->path());
-	}
-
-	public function size(): int {
-		return filesize($this->path());
-	}
-
-	public function lastModified(): int {
-		return filemtime($this->path());
-	}
-
-	public function chmod($mode) {
-		chmod($this->path(), $mode);
-	}
-
-	public function get($lock = false): ?string {
-		return $this->exists() ? file_get_contents($this->path()) : null;
-	}
-
-	public function put($contents, $lock = false) {
-		file_put_contents($this->path(), $contents, $lock ? LOCK_EX : 0);
-
-		$this->updateModel();
-	}
-
-	public function delete() {
-		//transaction
-		$this->model()->delete();
-
-		if ($this->exists())
-			unlink($this->path());
-	}
-
-	public function model() {
-		return $this->model ?? ($this->model = Eloquent\Model::findByGuid($this->guid));
-	}
-
-	public function entity() {
-		return $this->entity ?? ($this->entity = call_user_func([$this->entityType, 'find'], $this->entityId));
-	}
-
-	public function isEntity($entity): bool {
-		return $entity->id === $this->entityId && $entity::class === $this->entityType;
-	}
-
-	public function updateModel() {
-		if ($this->exists())
-			$this->model()->update([
-				'mime_type' => $this->mimeType(),
-				'size' => $this->size(),
-				'mtime' => $this->lastModified(),
-			]);
-		else
-			$this->model()->update([
-				'mime_type' => null,
-				'size' => 0,
-				'mtime' => null,
-			]);
-	}
-
-	public function __toString() {
-		return $this->guid;
-	}
-
-	private static function generateGuid(): string {
-		do {
-			$guid = md5(uniqid());
-		} while (Eloquent\Model::where('guid', $guid)->exists());
-
-		return $guid;
+	public function __toString()
+	{
+		return (string)$this->guid;
 	}
 
 }
