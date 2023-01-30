@@ -62,7 +62,7 @@ class FileWriter
 			throw new \Exception('Model undefined');
 
 		$manager = GuidStorageFacade::getFacadeRoot();
-		$filename = $manager->path($this->guid);
+		$filename = $manager->guidPath($this->guid);
 		$createdFlag = !file_exists($filename);
 
 		if ($createdFlag) {
