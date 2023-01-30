@@ -2,9 +2,11 @@
 
 namespace Gsdk\GuidFiles\Util;
 
-class Mime {
+class Mime
+{
 
-	public static function mimeToExtension(string $mime): ?string {
+	public static function mimeToExtension(string $mime): ?string
+	{
 		static $mime_map = [
 			'video/3gpp2' => '3g2',
 			'video/3gp' => '3gp',

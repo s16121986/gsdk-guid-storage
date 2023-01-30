@@ -3,15 +3,12 @@
 namespace Gsdk\GuidStorage\Eloquent;
 
 use Gsdk\GuidStorage\File;
-use Illuminate\Database\Eloquent\Model as BaseModel;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model as BaseModel;
 use Illuminate\Support\Facades\DB;
 
-class Model extends BaseModel {
-
-	const CREATED_AT = 'created';
-	const UPDATED_AT = 'updated';
-
+class Model extends BaseModel
+{
 	protected $table = 's_files';
 
 	public $timestamps = true;
@@ -20,42 +17,64 @@ class Model extends BaseModel {
 		'guid',
 		'name',
 		'type',
-		'entity_id',
-		'entity_type',
-		'mime_type',
-		'size',
-		'mtime',
+		'parent_id',
 		'index'
 	];
 
-	public static function scopeWhereEntity($query, $entity) {
-		$query
-			->where('entity_id', $entity->id)
-			->where('entity_type', get_class($entity));
+	public function file(): File
+	{
+		return new $this->type($this->guid, $this->parent_id);
 	}
 
-	public static function scopeWhereType($query, $fileObject) {
-		$query->where('type', is_string($fileObject) ? $fileObject : get_class($fileObject));
+	public static function createFromParent(string $fileType, int $parentId, ?string $name = null)
+	{
+		return static::create([
+			'guid' => static::generateGuid(),
+			'type' => $fileType,
+			'parent_id' => $parentId,
+			'name' => $name
+		]);
 	}
 
-	public static function scopeEntityColumn(Builder $builder, string $columnName) {
-		$fileClass = static::class;
+	public static function findByGuid($guid): ?static
+	{
+		return static::where('guid', $guid)->first();
+	}
+
+	public static function scopeWhereGuid($query, string $guid)
+	{
+		$query->where('guid', $guid);
+	}
+
+	public static function scopeWhereType($query, string $fileType)
+	{
+		$query->where('type', $fileType);
+	}
+
+	public static function scopeWhereParent($query, $parent)
+	{
+		$query->where('parent_id', is_object($parent) ? $parent->id : $parent);
+	}
+
+	public static function scopeParentColumn(Builder $builder, string $fileType, string $columnName)
+	{
 		$entity = $builder->getModel();
-		/*$query = self::query()
-			->whereColumn('s_files.entity_id', $entity->getTable() . '.id')
-			->where('s_files.entity_type', get_class($entity))
-			->where('s_files.type', $fileClass);
-
-		*/
-		$builder->addSelect(DB::raw('(SELECT guid FROM s_files'
-			. ' WHERE entity_id=`' . $entity->getTable() . '`.id'
-			. ' AND entity_type="' . addslashes(get_class($entity)) . '"'
-			. ' AND type="' . addslashes($fileClass) . '"'
-			. ' LIMIT 1) as `' . $columnName . '`'));
+		$builder->addSelect(
+			DB::raw(
+				'(SELECT guid FROM s_files'
+				. ' WHERE parent_id=`' . $entity->getTable() . '`.id'
+				. ' AND type="' . addslashes($fileType) . '"'
+				. ' LIMIT 1) as `' . $columnName . '`'
+			)
+		);
 	}
 
-	public function file(): ?File {
-		return File::fromModel($this);
-	}
+	private static function generateGuid(): string
+	{
+		do {
+			$guid = md5(uniqid());
+		} while (static::whereGuid($guid)->exists());
 
+		return $guid;
+	}
 }

@@ -2,84 +2,89 @@
 
 namespace Gsdk\GuidStorage;
 
+use Gsdk\GuidStorage\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\UploadedFile;
 
-class FileManager {
+class FileManager
+{
+	private readonly array $config;
 
 	private $storage;
 
-	private array $configs;
-
-	public function __construct($config) {
-		$this->storage = Storage::disk($config->storage_disk ?? 'files');
-		$this->configs = [
-			'nestingLevel' => $config->nesting_level ?? 1,
-			'pathNameLength' => $config->path_name_length ?? 0,
-			'dirMode' => $config->dir_mode ?? 0770,
-			'fileMode' => $config->file_mode ?? 0660,
-			'user' => $config->user,
-			'group' => $config->group,
+	public function __construct($config)
+	{
+		$this->config = [
+			'nestingLevel' => $config['nesting_level'] ?? 1,
+			'pathNameLength' => $config['path_name_length'] ?? 0,
+			'dirMode' => $config['dir_mode'] ?? 0770,
+			'fileMode' => $config['file_mode'] ?? 0660,
+			'user' => $config['user'] ?? null,
+			'group' => $config['group'] ?? null,
 		];
+
+		$this->storage = Storage::disk('files');
 	}
 
-	public function __get(string $name) {
-		return $this->configs[$name] ?? null;
+	public function __get(string $name)
+	{
+		return $this->config($name);
 	}
 
-	public function path(string|File $guid, int $part = null): string {
-		return $this->storage->path($this->getFileRelativePath($guid));
+	public function __call(string $name, array $arguments)
+	{
+		return $this->storage->$name(...$arguments);
 	}
 
-	public function modeAlias($alias) {
+	public function create(string $fileType, int $parentId, ?string $name = null): File
+	{
+		return Model::createFromParent($fileType, $parentId, $name)->file();
+	}
+
+	public function findByGuid(string $guid): ?File
+	{
+		$model = Model::findByGuid($guid);
+
+		return $model?->file();
+	}
+
+	public function config(string $name)
+	{
+		return $this->config[$name] ?? null;
+	}
+
+	public function modeAlias($alias)
+	{
 		return match ($alias) {
-			'file' => 0660,
-			'dir' => 0770,
+			'file' => $this->config['fileMode'],
+			'dir' => $this->config['dirMode'],
 			default => $alias
 		};
-		/*if (($group = self::config('group')))
-			chgrp($filename, $group);
-
-		if (($user = self::config('user')))
-			chown($filename, $user);*/
 	}
 
-	public function saveFileFromTemp(File $file, $tempname, array $attributes = []): void {
-		(new Support\FileUpdater($file))
-			//->content($content)
-			->attributes($attributes)
-			->save();
+	public function guidRelativePath(string $guid, int $part = null): string
+	{
+		return implode(DIRECTORY_SEPARATOR, $this->guidPaths($guid))
+			. DIRECTORY_SEPARATOR . $guid
+			. ($part ? '_' . $part : '');
 	}
 
-	public function saveFileContent(File $file, $content, array $attributes = []): void {
-		(new Support\FileUpdater($file))
-			->content($content)
-			->attributes($attributes)
-			->save();
+	public function guidPath(string $guid, int $part = null): string
+	{
+		return $this->storage->path($this->guidRelativePath($guid, $part));
 	}
 
-	public function saveFileFromUpload(File $file, UploadedFile $uploadFile): void {
-		if (!$uploadFile->isValid())
-			throw new \Exception('Uploaded file invalid');
-
-		$this->saveFileContent($file, $uploadFile->get(), ['name' => $uploadFile->getClientOriginalName()]);
+	public function writer(string|File $file = null): FileWriter
+	{
+		return new FileWriter($file);
 	}
 
-	private function guidPaths(string $guid): array {
+	private function guidPaths(string $guid): array
+	{
 		$paths = [];
-
 		for ($i = 0; $i < $this->nestingLevel; $i++) {
 			$paths[] = substr($guid, $i * $this->pathNameLength, $this->pathNameLength);
 		}
-
 		return $paths;
-	}
-
-	private function getFileRelativePath(string|File $guid): string {
-		if (!is_string($guid))
-			$guid = $guid->guid;
-
-		return implode(DIRECTORY_SEPARATOR, $this->getPaths($guid))
-			. DIRECTORY_SEPARATOR . $guid;
 	}
 }

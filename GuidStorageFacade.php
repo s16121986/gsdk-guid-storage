@@ -1,16 +1,13 @@
 <?php
 
-namespace Gsdk\GuidStorage\Facade;
+namespace Gsdk\GuidStorage;
 
 use Illuminate\Support\Facades\Facade;
 
-class GuidStorageFacade extends Facade {
-	/**
-	 * Get the registered name of the component.
-	 *
-	 * @return string
-	 */
-	protected static function getFacadeAccessor() {
+class GuidStorageFacade extends Facade
+{
+	protected static function getFacadeAccessor()
+	{
 		return 'guidStorage';
 	}
 }
