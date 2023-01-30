@@ -15,8 +15,8 @@ class FileManager
 	public function __construct($config)
 	{
 		$this->config = [
-			'nestingLevel' => $config['nesting_level'] ?? 1,
-			'pathNameLength' => $config['path_name_length'] ?? 0,
+			'nestingLevel' => $config['nesting_level'] ?? 0,
+			'pathNameLength' => $config['path_name_length'] ?? 2,
 			'dirMode' => $config['dir_mode'] ?? 0770,
 			'fileMode' => $config['file_mode'] ?? 0660,
 			'user' => $config['user'] ?? null,
