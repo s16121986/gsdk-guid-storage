@@ -75,6 +75,8 @@ class FileWriter
 		if ($createdFlag)
 			static::chmod($filename, $umask);
 
+		$this->model->touch();
+
 		return $this;
 	}
 
