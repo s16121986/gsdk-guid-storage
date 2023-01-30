@@ -1,33 +1,11 @@
 <?php
 
-namespace Gsdk\GuidStorage;
+namespace Gsdk\GuidFiles\Util;
 
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Http\UploadedFile;
-use File;
-use Exception;
-
-class Filesystem
+class Mime
 {
 
-	const NESTING_LEVEL = 3;
-	const DIRECTORY_NAME_LENGTH = 2;
-
-	public static function storage()
-	{
-		return Storage::disk('files');
-	}
-
-	public static function generateGuid(): string
-	{
-		do {
-			$guid = md5(uniqid());
-		} while (Eloquent\Model::where('guid', $guid)->exists());
-
-		return $guid;
-	}
-
-	public static function mimeToExtension($mime): ?string
+	public static function mimeToExtension(string $mime): ?string
 	{
 		static $mime_map = [
 			'video/3gpp2' => '3g2',
@@ -218,126 +196,4 @@ class Filesystem
 
 		return $mime_map[$mime] ?? null;
 	}
-
-	public static function chmod($filename, $mode)
-	{
-		$umask = umask(0);
-		$mode = match ($mode) {
-			'file' => 0660,
-			'dir' => 0770,
-			default => $mode
-		};
-		chmod($filename, $mode);//octdec($mode)
-		umask($umask);
-		/*if (($group = self::config('group')))
-			chgrp($filename, $group);
-
-		if (($user = self::config('user')))
-			chown($filename, $user);*/
-	}
-
-	public static function makeDirectory($path, $mode)
-	{
-		//$rootPath = File::storage()->path('');
-		try {
-			mkdir($path, $mode, true);
-		} catch (Exception $e) {
-			throw new Exception('Cant create folder "' . $path . '"', 0, $e);
-		}
-	}
-
-	public static function getPaths($guid): array
-	{
-		$paths = [];
-
-		for ($i = 0; $i < self::NESTING_LEVEL; $i++) {
-			$paths[] = substr($guid, $i * self::DIRECTORY_NAME_LENGTH, self::DIRECTORY_NAME_LENGTH);
-		}
-
-		return $paths;
-	}
-
-	public static function getPath($guid, $fullPath = false): string
-	{
-		$path = implode(DIRECTORY_SEPARATOR, self::getPaths($guid));
-
-		return $fullPath ? FILES_PATH . $path : $path;
-	}
-
-	public static function getDestination($guid): string
-	{
-		return self::getPath($guid) . DIRECTORY_SEPARATOR . $guid;
-	}
-
-	public static function saveFileFromTemp($file, $tempname, array $attributes = [])
-	{
-		$createdFlag = !$file->exists();
-
-		$storage = self::storage();
-		$fullname = $file->fullname;
-		$rootPath = $storage->path('');
-
-		if ($createdFlag) {
-			$umask = umask(0);
-			$path = $rootPath . self::getPath($file->guid);
-			if (!is_dir($path))
-				self::makeDirectory($path, 0770);
-		}
-
-		File::move(storage_path('tmp/' . $tempname), $storage->path($fullname));
-		//$storage->move('/app/tmp/' . $tempname, $fullname);
-
-		if ($createdFlag) {
-			chmod($rootPath . $file->fullname, 0660);
-			umask($umask);
-		}
-
-		$file->update(
-			array_merge($attributes, [
-				'mime_type' => $storage->mimeType($fullname),
-				'size' => $storage->size($fullname),
-				'mtime' => $storage->lastModified($fullname)
-			])
-		);
-	}
-
-	public static function saveFileContent($file, $content, array $attributes = [])
-	{
-		$createdFlag = !$file->exists();
-
-		$storage = self::storage();
-		$fullname = $file->fullname;
-		$rootPath = $storage->path('');
-
-		if ($createdFlag) {
-			$umask = umask(0);
-			$path = $rootPath . self::getPath($file->guid);
-			if (!is_dir($path))
-				self::makeDirectory($path, 0770);
-		}
-
-		$storage->put($fullname, $content);
-
-		if ($createdFlag) {
-			chmod($rootPath . $file->fullname, 0660);
-			umask($umask);
-		}
-
-		$file->update(
-			array_merge($attributes, [
-				'mime_type' => $storage->mimeType($fullname),
-				'size' => $storage->size($fullname),
-				'mtime' => $storage->lastModified($fullname)
-			])
-		);
-	}
-
-	public static function saveFileFromUpload($file, UploadedFile $uploadFile)
-	{
-		if (!$uploadFile->isValid())
-			throw new Exception('Uploaded file invalid');
-
-		return self::saveFileContent($file, $uploadFile->get(), ['name' => $uploadFile->getClientOriginalName()]);
-	}
-
 }
