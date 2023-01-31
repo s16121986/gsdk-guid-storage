@@ -12,9 +12,9 @@ class FileWriter
 	public function __construct(string|File $file = null)
 	{
 		if (is_string($file))
-			$this->guid($file);
+			$this->find($file);
 		else if ($file)
-			$this->guid($file->guid);
+			$this->find($file->guid);
 	}
 
 	public function __get(string $name)
@@ -29,16 +29,25 @@ class FileWriter
 
 	public function file(File $file): static
 	{
-		return $this->guid($file->guid);
+		return $this->find($file->guid);
 	}
 
-	public function guid(string $guid): static
+	public function find(string $guid): static
 	{
 		$model = Eloquent\Model::findByGuid($guid);
 		if (!$model)
 			throw new \Exception('File record not found');
 
 		$this->model = $model;
+
+		return $this;
+	}
+
+	public function findOrCreate(string $guid, string $fileType, int $parentId): static
+	{
+		$model = Eloquent\Model::findByGuid($guid);
+		if (!$model)
+			$this->create($fileType, $parentId);
 
 		return $this;
 	}
@@ -88,6 +97,17 @@ class FileWriter
 		$this->put($uploadedFile->get());
 
 		$this->attributes(['name' => $uploadedFile->getClientOriginalName()]);
+
+		return $this;
+	}
+
+	public function delete(): static
+	{
+		$this->model->delete();
+
+		unlink(GuidStorageFacade::guidPath($this->guid));
+
+		$this->model = null;
 
 		return $this;
 	}
